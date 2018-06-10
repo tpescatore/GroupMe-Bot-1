@@ -1,6 +1,5 @@
 var groupme = require("groupme");
 var fs = require("fs");
-var util = require("./util");
 
 var config = JSON.parse(fs.readFileSync("config.json")); 
 
@@ -8,29 +7,31 @@ var wolfram = require("wolfram-alpha").createClient(config.WA_key);
 
 var reactions = {};
 
-function init_reactions() {
-	var obj;
+Object.defineProperty(reactions, "globals", {
+	enumerable: false,
+	writable: true
+});
+
+function load_globals() {
 	var data = fs.readFileSync("data.json", {flag: "a+"});
 
 	// Load data.json, using empty object if it's empty
-	if (data.length == 0) {
-		obj = {};
+	try {
+		reactions.globals = JSON.parse(data);
 	}
-	else {
-		try {
-			obj = JSON.parse(data);
-		}
-		catch (e) {
-			console.log("Error parsing data.json");
-			return;
-		}
+	catch (e) {
+		reactions.globals = {};
+		console.log("Error parsing data.json");
 	}
+}
 
-	for (var i in reactions) {
-		if (reactions[i].init) {
-			reactions[i].init(obj);
-		}
+function add_global(group, key, value) {
+	if (!reactions.globals.hasOwnProperty(group)) {
+		reactions.globals[group] = {};
 	}
+	reactions.globals[group][key] = value;
+
+	fs.writeFile("data.json", JSON.stringify(reactions.globals));
 }
 
 reactions.dadjoke = {
@@ -38,15 +39,11 @@ reactions.dadjoke = {
 	re1: /(?:^|\s)(?:i[‘’`']?m|i am)\s+(\w+)(?:\W)?/i, // Match a single word
 	re: /(?:^|\s)(?:i[‘’`']?m|i am) +([^.,?!:;\n]+?)\s*(?:\.|,|\?|!|:|;|\n|$)/i, // Match an entire phrase
 	match: null,
-	prob: 0.2,
-	init: function(data) {
-		if (data.dadness) {
-			this.prob = data.dadness;
-		}
-	},
 	check: function(msg) {
+		var prob = reactions.globals[msg.group_id] && reactions.globals[msg.group_id].dadness;
+		prob = prob || 1;
 		this.match = this.re.exec(msg.text);
-		return this.match && Math.random() < this.prob;
+		return this.match && Math.random() < prob;
 	},
 	reply: function(msg) {
 		var name = this.match[1];
@@ -79,8 +76,7 @@ reactions.dadness = {
 			val = undefined;
 		}
 		if (val) {
-			reactions.dadjoke.prob = val;
-			util.store_data("dadness", val);
+			add_global(msg.group_id, "dadness", val);
 			response = "Dadness level set to " + 100 * val + "%.";
 		}
 		else {
@@ -88,7 +84,9 @@ reactions.dadness = {
 				response = "Error: dadness level must be between 0 and 1.";
 			}
 			else {
-				response = "Dadness level: " + 100 * reactions.dadjoke.prob + "%.";
+				val = reactions.globals[msg.group_id] && reactions.globals[msg.group_id].dadness;
+				val = val || 1;
+				response = "Dadness level: " + 100 * val + "%.";
 			}
 		}
 		
@@ -174,5 +172,5 @@ reactions.factorial = {
 	}
 }
 
-init_reactions();
+load_globals();
 module.exports = reactions;
