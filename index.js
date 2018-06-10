@@ -13,7 +13,7 @@ app.use(useragent.express());
 function onMessage(msg) {
 	if (!msg.system && msg.sender_type == "user") {
 		for (var i in reactions) {
-			if (reactions[i].check(msg)) {
+			if (reactions[i].check && reactions[i].check(msg)) {
 				reactions[i].reply(msg);
 			}
 		}
