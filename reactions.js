@@ -1,7 +1,7 @@
 var groupme = require("groupme");
 var fs = require("fs");
 
-var config = JSON.parse(fs.readFileSync("config.json")); 
+var config = require("./config")
 
 var wolfram = require("wolfram-alpha").createClient(config.WA_key);
 
@@ -160,7 +160,6 @@ reactions.factorial = {
 			}
 			else {
 				var result = self.getResults(body);
-				console.log(result);
 				var msg_str = result[0] + (result[0] == "that" ? "" : facts) + " = " + result[1];
 				groupme.Stateless.Bots.post("", msg.bot_id, msg_str, {}, function(err, res) {
 					if (err) {

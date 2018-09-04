@@ -4,7 +4,7 @@ var useragent = require("express-useragent");
 var fs = require("fs");
 var reactions = require("./reactions");
 
-var config = JSON.parse(fs.readFileSync("config.json")); 
+var config = require("./config");
 
 var app = express();
 app.use(bodyParser.json());
@@ -21,7 +21,7 @@ function onMessage(msg) {
 }
 
 // Make sure request is coming from the GroupMeBotNotifier
-app.post(config.callbackUrl, function(req, res) {
+app.post(config.callback_url, function(req, res) {
 	if (req.useragent.browser == "GroupMeBotNotifier") {
 		if (req.query.bot_id) {
 			req.body.bot_id = req.query.bot_id;
