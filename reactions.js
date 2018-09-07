@@ -1,38 +1,14 @@
 var groupme = require("groupme");
-var fs = require("fs");
 
 var config = require("./config")
 
 var wolfram = require("wolfram-alpha").createClient(config.WA_key);
 
+var MongoClient = require("mongodb").MongoClient;
+var mongo_url = "mongodb://localhost:27017/";
+var db_name = "groupme";
+
 var reactions = {};
-
-Object.defineProperty(reactions, "globals", {
-	enumerable: false,
-	writable: true
-});
-
-function load_globals() {
-	var data = fs.readFileSync("data.json", {flag: "a+"});
-
-	// Load data.json, using empty object if it's empty
-	try {
-		reactions.globals = JSON.parse(data);
-	}
-	catch (e) {
-		reactions.globals = {};
-		console.log("Error parsing data.json");
-	}
-}
-
-function add_global(group, key, value) {
-	if (!reactions.globals.hasOwnProperty(group)) {
-		reactions.globals[group] = {};
-	}
-	reactions.globals[group][key] = value;
-
-	fs.writeFile("data.json", JSON.stringify(reactions.globals));
-}
 
 reactions.dadjoke = {
 	// Check for any occurrence of "I'm ____"
@@ -40,25 +16,32 @@ reactions.dadjoke = {
 	re: /(?:^|\s)(?:i[‘’`']?m|i am) +([^.,?!:;\n]+?)\s*(?:\.|,|\?|!|:|;|\n|$)/i, // Match an entire phrase
 	match: null,
 	check: function(msg) {
-		var prob = reactions.globals[msg.group_id] && reactions.globals[msg.group_id].dadness;
-		prob = prob || 1;
 		this.match = this.re.exec(msg.text);
-		return this.match && Math.random() < prob;
+		return this.match;
 	},
 	reply: function(msg) {
-		var name = this.match[1];
-		// Specific message for a specific user
-		if (msg.user_id == "23766274") {
-			var joke = "Hi " + name + ", I'm da\uD83C\uDD71\uFE0F!";
-		}
-		else {
-			var joke = "Hi " + name + ", I'm dad!";
-		}
-		groupme.Stateless.Bots.post("", msg.bot_id, joke, {}, function(err, res) {
-			if (err) {
-				console.log(err.statusCode, err.statusMessage);
-			}
-		});
+        self = this;
+        reactions.dadness.get_from_db(msg, function(err, res) {
+            var dadness = (res && res.dadness != undefined) ? res.dadness : 1;
+            var rand = Math.random();
+            if (rand > dadness) {
+                return;
+            }
+            
+            var name = self.match[1];
+            // Specific message for a specific user
+            if (msg.user_id == "23766274") {
+                var joke = "Hi " + name + ", I'm da\uD83C\uDD71\uFE0F!";
+            }
+            else {
+                var joke = "Hi " + name + ", I'm dad!";
+            }
+            groupme.Stateless.Bots.post("", msg.bot_id, joke, {}, function(err, res) {
+                if (err) {
+                    console.log(err.statusCode, err.statusMessage);
+                }
+            });
+        });
 	}
 }
 
@@ -69,33 +52,92 @@ reactions.dadness = {
 		this.match = this.re.exec(msg.text);
 		return this.match;
 	},
-	reply: function(msg) {
-		var response;
-		var val = this.match[1] && parseFloat(this.match[1]);
-		if (val < 0 || val > 1) {
-			val = undefined;
-		}
-		if (val) {
-			add_global(msg.group_id, "dadness", val);
-			response = "Dadness level set to " + 100 * val + "%.";
-		}
-		else {
-			if (this.match[1]) {
-				response = "Error: dadness level must be between 0 and 1.";
-			}
-			else {
-				val = reactions.globals[msg.group_id] && reactions.globals[msg.group_id].dadness;
-				val = val || 1;
-				response = "Dadness level: " + 100 * val + "%.";
-			}
-		}
-		
-		groupme.Stateless.Bots.post("", msg.bot_id, response, {}, function(err, res) {
-			if (err) {
-				console.log(err.statusCode, err.statusMessage);
-			}
-		});
-	}
+    reply: function(msg) {
+        var response;
+        var val = parseFloat(this.match[1]);
+        if (val < 0 || val > 1) {
+            val = NaN;
+        }
+        if (!isNaN(val)) {
+            this.store_to_db(msg, val, function(err, res) {
+                if (err) {
+                    response = "Error setting dadness level.";
+                }
+                else {
+                    response = "Dadness level set to " + 100 * val + "%.";
+                }
+                groupme.Stateless.Bots.post("", msg.bot_id, response, {}, function(err, res) {
+                    if (err) {
+                        console.log(err.statusCode, err.statusMessage);
+                    }
+                });       
+            });
+        }
+        else {
+            if (this.match[1]) {
+                response = "Error: dadness level must be between 0 and 1.";
+                groupme.Stateless.Bots.post("", msg.bot_id, response, {}, function(err, res) {
+                    if (err) {
+                        console.log(err.statusCode, err.statusMessage);
+                    }
+                });
+            }
+            else {
+                this.get_from_db(msg, function(err, res) {
+                    if (err) {
+                        response = "Error getting dadness level.";
+                    }
+                    else {
+                        val = (res && res.dadness != undefined) ? res.dadness : 1;
+                        response = "Dadness level: " + 100 * val + "%.";
+                    }
+                    groupme.Stateless.Bots.post("", msg.bot_id, response, {}, function(err, res) {
+                        if (err) {
+                            console.log(err.statusCode, err.statusMessage);
+                        }
+                    });
+                });
+            }
+        }
+    },
+    store_to_db: function(msg, val, callback) {
+        MongoClient.connect(mongo_url, {useNewUrlParser: true}, function(err, db) {
+            if (err) {
+                if (callback) {
+                    callback(err);
+                }
+                throw err;
+            }
+            var dbo = db.db(db_name);
+            var query = {_id: msg.group_id}
+            var new_values = {$set: {_id: msg.group_id, dadness: val}};
+            dbo.collection("dadness").updateOne(query, new_values, {upsert: true}, function(err, res) {
+                if (callback) {
+                    callback(err, res);
+                }
+                if (err) throw err;
+                db.close();
+            });
+        });
+    },
+    get_from_db: function(msg, callback) {
+        MongoClient.connect(mongo_url, {useNewUrlParser: true}, function(err, db) {
+            if (err) {
+                if (callback) {
+                    callback(err);
+                }
+                throw err;
+            }
+            var dbo = db.db(db_name);
+            dbo.collection("dadness").findOne({_id: msg.group_id}, function(err, res) {
+                if (callback) {
+                    callback(err, res);
+                }
+                if (err) throw err;
+                db.close();
+            });
+        });
+    }
 }
 
 reactions.factorial = {
@@ -171,5 +213,4 @@ reactions.factorial = {
 	}
 }
 
-load_globals();
 module.exports = reactions;
