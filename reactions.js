@@ -4,6 +4,9 @@ var config = require("./config")
 
 var wolfram = require("wolfram-alpha").createClient(config.WA_key);
 
+var google = require("googleapis").google;
+var youtube = google.youtube({version: "v3", auth: config.google_key});
+
 var MongoClient = require("mongodb").MongoClient;
 var mongo_url = "mongodb://localhost:27017/";
 var db_name = "groupme";
@@ -211,6 +214,42 @@ reactions.factorial = {
 			}
 		});
 	}
+}
+
+reactions.alexa = {
+    re: /.*alexa.*play\s+(.*)/i,
+    match: null,
+    check: function(msg) {
+        this.match = this.re.exec(msg.text);
+        return this.match && this.match[1];
+    },
+    reply: function(msg) {
+        youtube.search.list({
+            part: "snippet",
+            type: "video",
+            regionCode: "US",
+            maxResults: 1,
+            q: this.match[1]
+        }, function(err, res) {
+            var title, video_id;
+            if (err || res.data.items.length == 0) {
+                title = "Luis Fonsi - Despacito ft. Daddy Yankee";
+                video_id = "kJQP7kiw5Fk";
+            }
+            else {
+                title = res.data.items[0].snippet.title;
+                video_id = res.data.items[0].id.videoId;
+            }
+
+            response = "NOW PLAYING: " + title + "\nhttps://youtu.be/" + video_id;
+
+            groupme.Stateless.Bots.post("", msg.bot_id, response, {}, function(err, res) {
+                if (err) {
+                    console.log(err.statusCode, err.statusMessage);
+                }
+            });
+        });
+    }
 }
 
 module.exports = reactions;

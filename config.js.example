@@ -6,6 +6,7 @@ config.bot_ids = ["XXXXXXXXXXXXXXXXXXXXXXXXXX"];
 config.token = "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
 config.callback_url = "/groupme/bot";
 config.WA_key = "XXXXXXXXXXXXXXXXX";
+config.google_key = "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
 config.port = 3000;
 
 module.exports = config;
