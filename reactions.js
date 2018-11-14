@@ -252,4 +252,20 @@ reactions.alexa = {
     }
 }
 
+reactions.swearing = {
+    re: /.*heck.*/i,
+    match: null,
+    check: function(msg) {
+        this.match = this.re.test(msg.text);
+        return this.match;
+    },
+    reply: function(msg) {
+        groupme.Stateless.Bots.post("", msg.bot_id, "no swearing please", {}, function(err, res) {
+            if (err) {
+                console.log(err.statusCode, err.statusMessage);
+            }
+        });
+    }
+}
+
 module.exports = reactions;
